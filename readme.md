@@ -16,7 +16,7 @@ Ce guide va t'expliquer, étape par étape et avec des mots simples, comment fon
    - [Créer une Table](#créer-une-table)
    - [Ajouter des Informations (ADD)](#ajouter-des-informations-add)
    - [Chercher des Informations (GET)](#chercher-des-informations-get)
-   - [Mettre à Jour des Informations (UPDATE)](#mettre-à-jour-des-informations-update)
+   - [Mettre à Jour des Informations (CHANGE)](#mettre-à-jour-des-informations-change)
    - [Supprimer des Informations (REMOVE)](#supprimer-des-informations-remove)
    - [Vider une Table (EMPTY)](#vider-une-table-empty)
    - [Supprimer une Table (DELETE)](#supprimer-une-table-delete)
@@ -112,11 +112,11 @@ GET name AS username IN users ORDER BY details.age DESC LIMIT 5;
 - **LIMIT 5** : Tu ne veux voir que 5 jouets au maximum.
 - Seules les lignes qui ont la donnée "details.age" seront utilisées pour le tri.
 
-### Mettre à Jour des Informations (UPDATE)
+### Mettre à Jour des Informations (CHANGE)
 
 **Commande :**  
 ```
-UPDATE age = 35 WHERE name IS Alice AND id IS 1 IN users;
+CHANGE age = 35 WHERE name IS Alice AND id IS 1 IN users;
 ```
 
 **Explication :**  
@@ -198,7 +198,7 @@ Le projet est construit comme une grande machine à commandes qui comprend plusi
 
 - **Chaîne de Responsabilité :**  
   Chaque commande est envoyée à une chaîne de "handlers" (gestionnaires) qui décident qui va s'en charger.  
-  Par exemple, il y a un handler pour ADD, un pour GET, un pour UPDATE, etc.  
+  Par exemple, il y a un handler pour ADD, un pour GET, un pour CHANGE, etc.  
   C'est comme si chaque commande passait d'un garde à l'autre, jusqu'à ce que l'un d'eux sache quoi faire.
 
 - **Chiffrement (EncryptService) :**  
@@ -235,7 +235,7 @@ Le projet est construit comme une grande machine à commandes qui comprend plusi
 3. **Mettre à Jour des Informations :**
    - Pour changer l'âge d'un jouet, tu peux écrire :  
      ```
-     UPDATE age = 35 WHERE name IS Alice AND id IS 1 IN users;
+     CHANGE age = 35 WHERE name IS Alice AND id IS 1 IN users;
      ```
      Le système va chercher le jouet qui s'appelle "Alice" et qui a l'identifiant 1 et changer son âge à 35.
 
