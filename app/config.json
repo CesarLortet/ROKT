@@ -1,0 +1,7 @@
+{
+    "encryption": {
+      "passphrase": "MaPassphraseSecretePourAES128",
+      "iv": "0123456789ABCDEF"
+    }
+}
+  

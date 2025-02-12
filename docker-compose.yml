@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  rokt:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Dockerfile de votre serveur C++ existant
+    container_name: rokt_container
+    hostname: rokt_host
+    volumes:
+      - ./shared:/app/shared
+    networks: 
+      rokt:
+    environment:
+      - DEBUG=1
+    ports:
+      - "8080:8080"
+
+  php-tester:
+    image: php:cli
+    container_name: php_tester
+    depends_on:
+      - rokt
+    networks: 
+      rokt:
+    volumes:
+      - ./tester.php:/tester.php   # Montage du script tester.php
+    command: ["php", "/tester.php"]
+
+networks: 
+  rokt:
