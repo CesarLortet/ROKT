@@ -11,7 +11,7 @@ $response = $qb->create("users")->get();
 echo "Réponse du serveur : $response\n\n";
 
 // --- Commandes ADD ---
-// Ici, on reconstruit la commande ADD en formatant les données en JSON
+// Ici, on reconstruit la commande ADD en formatant les données en json
 $dataItems = [
     ["id" => 1, "name" => "Alice", "age" => 30],
     ["id" => 2, "name" => "Bob", "age" => 25],
