@@ -7,20 +7,23 @@
 #include <vector>
 #include <string>
 
-using json = nlohmann::json;
 
-struct Condition {
-    std::string field;   // Par exemple, "name" ou "details.city"
-    std::string op;      // Opérateur ("==", "!=", "HAS", "<", etc.)
-    std::string value;   // Valeur de comparaison (sous forme de chaîne)
-    std::string logic;   // "AND" ou "OR" (vide pour la première condition)
+
+struct Condition
+{
+    std::string field; // Par exemple, "name" ou "details.city"
+    std::string op;    // Opérateur ("==", "!=", "HAS", "<", etc.)
+    std::string value; // Valeur de comparaison (sous forme de chaîne)
+    std::string logic; // "AND" ou "OR" (vide pour la première condition)
 };
 
-static json getNestedValue(const json &j, const std::string &compoundKey) {
+static nlohmann::json getNestedValue(const nlohmann::json &j, const std::string &compoundKey)
+{
     std::istringstream iss(compoundKey);
     std::string token;
-    json current = j;
-    while (std::getline(iss, token, '.')) {
+    nlohmann::json current = j;
+    while (std::getline(iss, token, '.'))
+    {
         if (current.contains(token))
             current = current[token];
         else
@@ -29,11 +32,13 @@ static json getNestedValue(const json &j, const std::string &compoundKey) {
     return current;
 }
 
-static bool evaluateCondition(const json &item, const Condition &cond) {
-    json fieldValue;
+static bool evaluateCondition(const nlohmann::json &item, const Condition &cond, bool *res)
+{
+    nlohmann::json fieldValue;
     if (cond.field.find('.') != std::string::npos)
         fieldValue = getNestedValue(item, cond.field);
-    else {
+    else
+    {
         if (item.contains(cond.field))
             fieldValue = item[cond.field];
         else
@@ -41,67 +46,174 @@ static bool evaluateCondition(const json &item, const Condition &cond) {
     }
     if (fieldValue.is_null() || fieldValue == nullptr)
         return false;
-    
-    try {
+
+    try
+    {
         double cmpVal = std::stod(cond.value);
-        if (fieldValue.is_number()) {
+        if (fieldValue.is_number())
+        {
             double val = fieldValue.get<double>();
-            if (cond.op == "==") return val == cmpVal;
-            else if (cond.op == "!=") return val != cmpVal;
-            else if (cond.op == "<") return val < cmpVal;
-            else if (cond.op == "<=") return val <= cmpVal;
-            else if (cond.op == ">") return val > cmpVal;
-            else if (cond.op == ">=") return val >= cmpVal;
-            else throw std::runtime_error("Opérateur non reconnu pour valeurs numériques");
+            if (cond.op == "==")
+            {
+                *res = val == cmpVal;
+                return true;
+            }
+            else if (cond.op == "!=")
+            {
+                *res = val != cmpVal;
+                return true;
+            }
+            else if (cond.op == "<")
+            {
+                *res = val < cmpVal;
+                return true;
+            }
+            else if (cond.op == "<=")
+            {
+                *res = val <= cmpVal;
+                return true;
+            }
+            else if (cond.op == ">")
+            {
+                *res = val > cmpVal;
+                return true;
+            }
+            else if (cond.op == ">=")
+            {
+                *res = val >= cmpVal;
+                return true;
+            }
+            else
+            {
+                // "Opérateur non reconnu pour valeurs numériques"
+                return false;
+            }
         }
-    } catch (...) {
+    }
+    catch (...)
+    {
         // Conversion échouée, on compare en chaîne.
     }
-    if (cond.op == "HAS") {
+    if (cond.op == "HAS")
+    {
         if (!fieldValue.is_array())
-            return false;
-        for (auto &elem : fieldValue) {
-            if (elem == cond.value)
-                return true;
+        {
+            *res = false;
+            return true;
         }
-        return false;
-    } else {
-        if (fieldValue.is_string()) {
+        for (auto &elem : fieldValue)
+        {
+            if (elem == cond.value)
+            {
+                *res = true;
+                return true;
+            }
+        }
+        *res = false;
+        return true;
+    }
+    else
+    {
+        if (fieldValue.is_string())
+        {
             std::string strVal = fieldValue.get<std::string>();
-            if (cond.op == "==") return strVal == cond.value;
-            else if (cond.op == "!=") return strVal != cond.value;
-            else if (cond.op == "<") return strVal < cond.value;
-            else if (cond.op == "<=") return strVal <= cond.value;
-            else if (cond.op == ">") return strVal > cond.value;
-            else if (cond.op == ">=") return strVal >= cond.value;
-            else throw std::runtime_error("Opérateur non reconnu pour chaînes");
-        } else {
+            if (cond.op == "==")
+            {
+                *res = strVal == cond.value;
+                return true;
+            }
+            else if (cond.op == "!=")
+            {
+                *res = strVal != cond.value;
+                return true;
+            }
+            else if (cond.op == "<")
+            {
+                *res = strVal < cond.value;
+                return true;
+            }
+            else if (cond.op == "<=")
+            {
+                *res = strVal <= cond.value;
+                return true;
+            }
+            else if (cond.op == ">")
+            {
+                *res = strVal > cond.value;
+                return true;
+            }
+            else if (cond.op == ">=")
+            {
+                *res = strVal >= cond.value;
+                return true;
+            }
+            else
+            {
+                // "Opérateur non reconnu pour chaînes";
+                return false;
+            }
+        }
+        else
+        {
             std::string strVal = fieldValue.dump();
-            if (cond.op == "==") return strVal == cond.value;
-            else if (cond.op == "!=") return strVal != cond.value;
-            else if (cond.op == "<") return strVal < cond.value;
-            else if (cond.op == "<=") return strVal <= cond.value;
-            else if (cond.op == ">") return strVal > cond.value;
-            else if (cond.op == ">=") return strVal >= cond.value;
-            else throw std::runtime_error("Opérateur non reconnu");
+            if (cond.op == "==")
+            {
+                *res = strVal == cond.value;
+                return true;
+            }
+            else if (cond.op == "!=")
+            {
+                *res = strVal != cond.value;
+                return true;
+            }
+            else if (cond.op == "<")
+            {
+                *res = strVal < cond.value;
+                return true;
+            }
+            else if (cond.op == "<=")
+            {
+                *res = strVal <= cond.value;
+                return true;
+            }
+            else if (cond.op == ">")
+            {
+                *res = strVal > cond.value;
+                return true;
+            }
+            else if (cond.op == ">=")
+            {
+                *res = strVal >= cond.value;
+                return true;
+            }
+            else
+            {
+                // "Opérateur non reconnu");
+                return false;
+            }
         }
     }
 }
 
-static bool evaluateConditions(const json &item, const std::vector<Condition> &conds) {
-    if (conds.empty()) return true;
-    bool result = evaluateCondition(item, conds[0]);
-    for (size_t i = 1; i < conds.size(); i++) {
+static bool evaluateConditions(const nlohmann::json &item, const std::vector<Condition> &conds, bool* result)
+{
+    if (conds.empty())
+        return true;
+    *result = evaluateCondition(item, conds[0], result);
+    for (size_t i = 1; i < conds.size(); i++)
+    {
         const std::string &logic = conds[i].logic;
-        bool current = evaluateCondition(item, conds[i]);
+        bool current = evaluateCondition(item, conds[i], result);
         if (logic == "AND")
-            result = result && current;
+            *result = *result && current;
         else if (logic == "OR")
-            result = result || current;
-        else
-            throw std::runtime_error("Logique de condition non reconnue");
+            *result = *result || current;
+        else {
+            // "Logique de condition non reconnue"
+            return false;
+        }
     }
-    return result;
+    return true;
 }
 
 #endif // CONDITION_UTILS_H

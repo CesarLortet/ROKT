@@ -11,7 +11,7 @@
 class EmptyCommandHandler : public CommandHandler {
 public:
     EmptyCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) override {
         std::istringstream iss(command);
         std::string keyword, dataset;
         iss >> keyword >> dataset;
@@ -19,10 +19,13 @@ public:
         dataset = trim(dataset);
         if (keyword != "EMPTY")
             return CommandHandler::handle(command);
-        RoktDataset datasetObj = this->service->from(dataset);
+        std::shared_ptr<RoktDataset> datasetObj;
+        if(this->service->from(dataset, datasetObj)->hasError()) {
+                return ROKT::ResponseService::response(1, "Can't get dataset");
+        }
         nlohmann::json emptyData = nlohmann::json::array();
-        datasetObj.overwrite(emptyData);
-        return RoktResponseService::response(0, "OK, table vide");
+        datasetObj->overwrite(emptyData);
+        return ROKT::ResponseService::response(0, "OK, table vide");
     }
 };
 

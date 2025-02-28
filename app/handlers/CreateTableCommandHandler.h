@@ -12,7 +12,7 @@
 class CreateTableCommandHandler : public CommandHandler {
 public:
     CreateTableCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) override {
         if (command.find("CREATE TABLE") == 0) {
             std::istringstream iss(command);
             std::string token, dataset;

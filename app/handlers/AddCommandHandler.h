@@ -8,6 +8,7 @@
 #include "RoktDataset.h"
 #include "RoktService.h"
 #include "Utils.h" // pour trim()
+#include "LogService.h"
 
 /**
  * @brief Gère la commande "ADD { ... } [UNIQUE field] IN dataset;".
@@ -17,7 +18,7 @@
 class AddCommandHandler : public CommandHandler {
 public:
     AddCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) override {
         std::regex pattern("^ADD\\s*(\\{.*\\})\\s*(?:UNIQUE\\s+(\\S+))?\\s*IN\\s+(\\S+);$", std::regex::icase);
         std::smatch matches;
         if (!std::regex_match(command, matches, pattern)) {
@@ -30,23 +31,29 @@ public:
         try {
             newData = nlohmann::json::parse(jsonBlock);
         } catch (...) {
-            return RoktResponseService::response(11, "JSON invalide");
+            return ROKT::ResponseService::response(11, "JSON invalide");
         }
         if (!uniqueField.empty()) {
             if (!newData.contains(uniqueField)) {
-                return RoktResponseService::response(12, "Champ unique '" + uniqueField + "' absent");
+                return ROKT::ResponseService::response(12, "Champ unique '" + uniqueField + "' absent");
             }
             auto newUniqueValue = newData[uniqueField];
-            RoktDataset datasetObj = this->service->from(dataset);
-            nlohmann::json existingData = datasetObj.readData(); // readData() retourne un json (tableau)
+            std::shared_ptr<RoktDataset> datasetObj;
+            if(this->service->from(dataset, datasetObj)->hasError()) {
+                    return ROKT::ResponseService::response(1, "Can't get dataset");
+            }
+            nlohmann::json existingData = datasetObj->readData(); // readData() retourne un nlohmann::json (tableau)
             for (const auto &row : existingData) {
                 if (row.contains(uniqueField) && row[uniqueField] == newUniqueValue) {
-                    return RoktResponseService::response(10, "Already Exists");
+                    return ROKT::ResponseService::response(10, "Already Exists");
                 }
             }
         }
-        RoktDataset datasetObj = this->service->from(dataset);
-        return datasetObj.insert(newData);
+        std::shared_ptr<RoktDataset> datasetObj;
+        if(this->service->from(dataset, datasetObj)->hasError()) {
+                return ROKT::ResponseService::response(1, "Can't get dataset");
+        }
+        return datasetObj->insert(newData);
     }
 };
 

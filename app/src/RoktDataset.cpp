@@ -5,30 +5,32 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
+
 
 // Constructeur pour un dataset SIMPLE
-RoktDataset::RoktDataset(DatasetConfigType t, const std::string &p, const std::string &ds, EncryptService* enc)
+RoktDataset::RoktDataset(DatasetConfigType t, const std::string &p, const std::string &ds, std::shared_ptr<EncryptService> enc)
     : type(t), path(p), encryptService(enc) {
     if (t == DatasetConfigType::DATASET)
         datasetFiles.push_back(ds);
 }
 
 // Constructeur pour un dataset ROTATE
-RoktDataset::RoktDataset(DatasetConfigType t, const std::string &p, const std::vector<std::string> &ds, EncryptService* enc)
+RoktDataset::RoktDataset(DatasetConfigType t, const std::string &p, const std::vector<std::string> &ds, std::shared_ptr<EncryptService> enc)
     : type(t), path(p), datasetFiles(ds), encryptService(enc) {}
 
 // Fonction interne pour lire le dataset à partir d'un fichier
-json RoktDataset::readDataset(const std::string &filename) {
+bool RoktDataset::readDataset(const std::string &filename, nlohmann::json *result) {
     std::string fullPath = path + "/" + filename;
     std::ifstream file(fullPath, std::ios::binary);
     if (!file) {
         // Si le fichier n'existe pas, on crée un fichier vide
-        json empty = json::array();
+        nlohmann::json empty = nlohmann::json::array();
         writeDataset(filename, empty);
         file.open(fullPath, std::ios::binary);
-        if (!file)
-            throw std::runtime_error("Impossible d'ouvrir le fichier dataset : " + filename);
+        if (!file) {
+            this->lastError = "Impossible d'ouvrir le fichier dataset : " + filename;
+            return false;
+        }
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
@@ -38,17 +40,20 @@ json RoktDataset::readDataset(const std::string &filename) {
         decryptedData = encryptService->decrypt(encryptedData);
     } catch (std::exception &e) {
         // En cas d'erreur de décryptage, on recrée un fichier vide
-        json empty = json::array();
+        nlohmann::json empty = nlohmann::json::array();
         writeDataset(filename, empty);
-        return empty;
+        *result = empty;
+        return true;
     }
     try {
-        return json::parse(decryptedData);
-    } catch (json::parse_error &e) {
+        *result = nlohmann::json::parse(decryptedData);
+        return true;
+    } catch (nlohmann::json::parse_error &e) {
         // En cas d'erreur de parsing, recréer le fichier vide
-        json empty = json::array();
+        nlohmann::json empty = nlohmann::json::array();
         writeDataset(filename, empty);
-        return empty;
+        *result = empty;
+        return true;
     }
 }
 
@@ -65,7 +70,7 @@ nlohmann::json RoktDataset::readData() {
     // Ouvrir le fichier en mode binaire.
     std::ifstream file(fullPath, std::ios::binary);
     if (!file) {
-        // Si le fichier n'existe pas, créer un tableau JSON vide et l'écrire.
+        // Si le fichier n'existe pas, créer un tableau nlohmann::json vide et l'écrire.
         nlohmann::json emptyData = nlohmann::json::array();
         writeDataset(filename, emptyData);
         return emptyData;
@@ -87,7 +92,7 @@ nlohmann::json RoktDataset::readData() {
         return emptyData;
     }
 
-    // Parser le JSON déchiffré.
+    // Parser le nlohmann::json déchiffré.
     try {
         return nlohmann::json::parse(decryptedData);
     } catch (nlohmann::json::parse_error &e) {
@@ -99,8 +104,8 @@ nlohmann::json RoktDataset::readData() {
 }
 
 
-// Fonction interne pour écrire le JSON dans le fichier dataset
-void RoktDataset::writeDataset(const std::string &filename, const json &j) {
+// Fonction interne pour écrire le nlohmann::json dans le fichier dataset
+void RoktDataset::writeDataset(const std::string &filename, const nlohmann::json &j) {
     std::string fullPath = path + "/" + filename;
     std::string plaintext = j.dump();
     std::string encryptedData = encryptService->encrypt(plaintext);
@@ -111,15 +116,18 @@ void RoktDataset::writeDataset(const std::string &filename, const json &j) {
 }
 
 // Méthode update (non modifiée ici, on suppose qu'elle suit la logique précédente)
-RoktResponseObject *RoktDataset::update(const json &set, const json &value, const std::vector<json> &where) {
+std::unique_ptr<ROKT::ResponseObject>RoktDataset::update(const nlohmann::json &set, const nlohmann::json &value, const std::vector<nlohmann::json> &where) {
     // Implémentation similaire à celle précédemment proposée (non détaillée ici)
-    return RoktResponseService::response(0);
+    return ROKT::ResponseService::response(0);
 }
 
 // Méthode remove (non modifiée ici, on suppose qu'elle suit la logique précédente)
-RoktResponseObject *RoktDataset::remove(const std::string &set, const std::string &op, const json &compare) {
-    json data = readDataset(datasetFiles[0]);
-    json newData = json::array();
+std::unique_ptr<ROKT::ResponseObject>RoktDataset::remove(const std::string &set, const std::string &op, const nlohmann::json &compare) {
+    nlohmann::json data;
+    if(!readDataset(datasetFiles[0], &data)) {
+        return ROKT::ResponseService::response(3, "Can't read dataset");
+    }
+    nlohmann::json newData = nlohmann::json::array();
     for (auto &row : data) {
         // Si la ligne satisfait la condition, elle sera supprimée
         // On compare directement ici (on suppose que la méthode where du RoktData est utilisée pour GET)
@@ -128,32 +136,38 @@ RoktResponseObject *RoktDataset::remove(const std::string &set, const std::strin
             newData.push_back(row);
     }
     writeDataset(datasetFiles[0], newData);
-    return RoktResponseService::response(0);
+    return ROKT::ResponseService::response(0);
 }
 
 // Méthode insert
-RoktResponseObject *RoktDataset::insert(const json &newData) {
-    json data;
+std::unique_ptr<ROKT::ResponseObject>RoktDataset::insert(const nlohmann::json &newData) {
+    nlohmann::json data;
     std::ifstream infile(path + "/" + datasetFiles[0], std::ios::binary);
-    if (infile)
-        data = readDataset(datasetFiles[0]);
+    if (infile) {
+        if(!readDataset(datasetFiles[0], &data)) {
+            return ROKT::ResponseService::response(3, "Can't read dataset");
+        }
+    }
     else
-        data = json::array();
+        data = nlohmann::json::array();
     data.push_back(newData);
     writeDataset(datasetFiles[0], data);
-    return RoktResponseService::response(2);
+    return ROKT::ResponseService::response(2);
 }
 
 // Méthode select : renvoie un RoktData à partir d'une sélection de champs.
 RoktData RoktDataset::select(const std::vector<std::string> &keys) {
-    json data = readDataset(datasetFiles[0]);
+    nlohmann::json data;
+    if(!readDataset(datasetFiles[0], &data)) {
+        return RoktData(nlohmann::json::array());
+    }
     // Si le premier champ est "*", renvoyer les données complètes
     if (!keys.empty() && keys[0] == "*") {
         return RoktData(data);
     } else {
-        json result = json::array();
+        nlohmann::json result = nlohmann::json::array();
         for (auto &row : data) {
-            json item;
+            nlohmann::json item;
             for (auto &key : keys) {
                 if (row.contains(key))
                     item[key] = row[key];
@@ -164,17 +178,17 @@ RoktData RoktDataset::select(const std::vector<std::string> &keys) {
     }
 }
 
-RoktResponseObject *RoktDataset::clear() {
-    json empty = json::array();
+std::unique_ptr<ROKT::ResponseObject>RoktDataset::clear() {
+    nlohmann::json empty = nlohmann::json::array();
     writeDataset(datasetFiles[0], empty);
-    return RoktResponseService::response(0); // 0 correspond à "OK"
+    return ROKT::ResponseService::response(0); // 0 correspond à "OK"
 }
 
 // Méthode overwrite : remplace le contenu du dataset par newData.
-RoktResponseObject *RoktDataset::overwrite(const json &newData) {
+std::unique_ptr<ROKT::ResponseObject>RoktDataset::overwrite(const nlohmann::json &newData) {
     if (datasetFiles.empty())
-        return RoktResponseService::response(567);
+        return ROKT::ResponseService::response(567);
     std::string filename = datasetFiles[0];
     writeDataset(filename, newData);
-    return RoktResponseService::response(0);
+    return ROKT::ResponseService::response(0);
 }

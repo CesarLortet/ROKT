@@ -15,7 +15,7 @@ COPY app/config.json .
 RUN mkdir -p shared/datas
 
 # Compilation du code source avec les options nécessaires
-RUN g++ -std=c++17 -lcrypto -lssl -Wall -Werror -O3 main.cpp RoktService.cpp RoktDataset.cpp RoktData.cpp LogService.cpp EncryptService.cpp Config.cpp -o rokt_socket
+RUN g++ -std=c++17 -lcrypto -lssl -Wall -Werror -O3 -pthread main.cpp RoktService.cpp RoktDataset.cpp RoktData.cpp LogService.cpp EncryptService.cpp SyncService.cpp Config.cpp -o rokt_socket
 
 # Exposer le port sur lequel le serveur socket écoute
 EXPOSE 8080

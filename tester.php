@@ -71,7 +71,8 @@ $commands = [
 
     "COUNT users;",
     
-    "DELETE users;"
+    "DELETE users;",
+    "DELETE test;"
 ];
 
 // Exécution séquentielle des commandes et affichage des réponses

@@ -10,7 +10,7 @@
 class DeleteCommandHandler : public CommandHandler {
 public:
     DeleteCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) override {
         std::istringstream iss(command);
         std::string keyword, dataset;
         iss >> keyword >> dataset;

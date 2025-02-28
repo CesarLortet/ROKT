@@ -8,34 +8,38 @@
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
 
-RoktService::RoktService(const std::string& dir, EncryptService* enc)
+
+RoktService::RoktService(const std::string& dir, std::shared_ptr<EncryptService> enc)
     : baseDir(dir), encryptService(enc)
 {
     // On conserve le dossier "shared" en clair,
     // puis on crypte le nom du dossier "datas" pour obtenir le dossier contenant les datasets.
     // Par exemple, si "datas" encrypté donne "a3f4d2...", le dossier sera : <baseDir>/shared/a3f4d2...
-    encryptedDatabaseRoot = baseDir + "/shared/" + encryptService->encryptFilename("datas");
+    encryptedDatabaseRoot = baseDir;
+    encryptedDatabaseRoot.std::string::append("/shared/");
+    encryptedDatabaseRoot.std::string::append(encryptService->encryptFilename("datas"));
     // Le fichier de configuration est placé dans ce dossier et son nom est également encrypté.
-    encryptedDataConfigFile = encryptedDatabaseRoot + "/" + encryptService->encryptFilename("datasets.config.json");
+    encryptedDataConfigFile = encryptedDatabaseRoot;
+    encryptedDataConfigFile.std::string::append("/");
+    encryptedDataConfigFile.std::string::append(encryptService->encryptFilename("datasets.config.json"));
 
     // Assurer que le dossier encrypté existe
     std::filesystem::create_directories(encryptedDatabaseRoot);
     // Si le fichier de configuration n'existe pas, on le crée avec une configuration par défaut.
     std::ifstream ifs(encryptedDataConfigFile, std::ios::binary);
     if (!ifs) {
-        json defaultConfig;
-        defaultConfig["datasets"] = json::object();
+        nlohmann::json defaultConfig;
+        defaultConfig["datasets"] = nlohmann::json::object();
         writeConfig(defaultConfig);
     }
 }
 
-json RoktService::loadConfig() {
+nlohmann::json RoktService::loadConfig() {
     std::ifstream configFile(encryptedDataConfigFile, std::ios::binary);
     if (!configFile) {
-        json defaultConfig;
-        defaultConfig["datasets"] = json::object();
+        nlohmann::json defaultConfig;
+        defaultConfig["datasets"] = nlohmann::json::object();
         writeConfig(defaultConfig);
         return defaultConfig;
     }
@@ -46,16 +50,22 @@ json RoktService::loadConfig() {
     try {
         decryptedData = encryptService->decrypt(encryptedData);
     } catch (std::exception& e) {
-        throw std::runtime_error("Erreur de déchiffrement du fichier de configuration: " + std::string(e.what()));
+        nlohmann::json defaultConfig;
+        defaultConfig["datasets"] = nlohmann::json::object();
+        writeConfig(defaultConfig);
+        return defaultConfig;
     }
     try {
-        return json::parse(decryptedData);
-    } catch (json::parse_error& e) {
-        throw std::runtime_error("Erreur de parsing JSON dans le fichier de configuration: " + std::string(e.what()));
+        return nlohmann::json::parse(decryptedData);
+    } catch (nlohmann::json::parse_error& e) {
+        nlohmann::json defaultConfig;
+        defaultConfig["datasets"] = nlohmann::json::object();
+        writeConfig(defaultConfig);
+        return defaultConfig;
     }
 }
 
-void RoktService::writeConfig(const json &configJson) {
+void RoktService::writeConfig(const nlohmann::json &configJson) {
     std::string plaintext = configJson.dump(4);
     std::string encryptedData = encryptService->encrypt(plaintext);
     std::ofstream outConfig(encryptedDataConfigFile, std::ios::binary);
@@ -64,13 +74,13 @@ void RoktService::writeConfig(const json &configJson) {
     outConfig.write(encryptedData.data(), encryptedData.size());
 }
 
-RoktResponseObject *RoktService::create(const std::string& dataset, const std::string& type, const std::vector<std::string>& args) {
+std::unique_ptr<ROKT::ResponseObject>RoktService::create(const std::string& dataset, const std::string& type, const std::vector<std::string>& args) {
     // Charger la configuration chiffrée
-    json configJson = loadConfig();
+    nlohmann::json configJson = loadConfig();
 
     // Vérifier si le dataset existe déjà
     if (configJson["datasets"].contains(dataset))
-        return RoktResponseService::response(10, "Already Exists");
+        return ROKT::ResponseService::response(10, "Already Exists");
 
     // Mettre à jour la configuration pour ce dataset
     configJson["datasets"][dataset]["type"] = type;
@@ -82,15 +92,19 @@ RoktResponseObject *RoktService::create(const std::string& dataset, const std::s
     }
     if (type == "ROTATE") {
         if (!args.empty())
-            configJson["datasets"][dataset]["size"] = args[0];
+            try {
+                configJson["datasets"][dataset]["size"] = std::stoi(args[0]);
+            } catch (...) {
+                return ROKT::ResponseService::response(12, "Bad file size format");
+            }
         else
             configJson["datasets"][dataset]["size"] = "3Mo";
         if (args.size() > 1) {
             try {
-                int nb = std::stoi(args[1]);
+                int nb = (std::stoi(args[1]) ? std::stoi(args[1]) : 3);
                 configJson["datasets"][dataset]["nb_rotation"] = nb;
             } catch (...) {
-                return RoktResponseService::response(12, "Bad file number format");
+                return ROKT::ResponseService::response(12, "Bad file number format");
             }
         } else {
             configJson["datasets"][dataset]["nb_rotation"] = 2;
@@ -111,8 +125,8 @@ RoktResponseObject *RoktService::create(const std::string& dataset, const std::s
         if (!std::filesystem::exists(filePath)) {
             std::ofstream outFile(filePath, std::ios::binary);
             if (!outFile)
-                return RoktResponseService::response(423, "Impossible de créer le fichier du dataset");
-            // Initialiser le fichier avec un tableau JSON vide
+                return ROKT::ResponseService::response(423, "Impossible de créer le fichier du dataset");
+            // Initialiser le fichier avec un tableau nlohmann::json vide
             nlohmann::json emptyArray = nlohmann::json::array();
             std::string plaintext = emptyArray.dump();
             std::string encryptedContent = encryptService->encrypt(plaintext);
@@ -123,39 +137,51 @@ RoktResponseObject *RoktService::create(const std::string& dataset, const std::s
     
     // Enregistrer la configuration mise à jour (le fichier de config est lui-même encrypté)
     writeConfig(configJson);
-    return RoktResponseService::response(0, "OK");
+    return ROKT::ResponseService::response(0, "OK");
 }
 
 
-RoktResponseObject *RoktService::drop(const std::string& dataset) {
-    json configJson = loadConfig();
+std::unique_ptr<ROKT::ResponseObject> RoktService::drop(const std::string& dataset) {
+    nlohmann::json configJson = loadConfig();
     if (!configJson["datasets"].contains(dataset))
-        return RoktResponseService::response(567); // Dataset non existant
+        return ROKT::ResponseService::response(567); // Dataset non existant
 
     std::string encryptedDatasetName = encryptService->encryptFilename(dataset);
-    std::string datasetDir = encryptedDatabaseRoot + "/" + encryptedDatasetName;
+    std::string datasetDir = encryptedDatabaseRoot;
+    datasetDir.append("/"); 
+    datasetDir.append(encryptedDatasetName);
+
     std::error_code ec;
     std::filesystem::remove_all(datasetDir, ec);
+    
+    if (ec) {
+        return ROKT::ResponseService::response(457);
+    }
 
     configJson["datasets"].erase(dataset);
     writeConfig(configJson);
-    return RoktResponseService::response(0);
+    return ROKT::ResponseService::response(0);
 }
 
-RoktDataset RoktService::from(const std::string& dataset, bool auto_create) {
-    json configJson = loadConfig();
+std::unique_ptr<ROKT::ResponseObject> RoktService::from(const std::string& dataset, std::shared_ptr<RoktDataset>& result) {
+    nlohmann::json configJson = loadConfig();
     if (!configJson["datasets"].contains(dataset)) {
-        throw std::runtime_error("Dataset does not exist");
+        return ROKT::ResponseService::response(1, "Dataset does not exist");
     }
+
     std::string type = configJson["datasets"][dataset]["type"].get<std::string>();
     std::string encryptedDatasetName = encryptService->encryptFilename(dataset);
-    std::string datasetDir = encryptedDatabaseRoot + "/" + encryptedDatasetName;
-    if (type == "SIMPLE")
-        return RoktDataset(DatasetConfigType::DATASET, datasetDir, encryptService->encryptFilename("dataset.rokt"), encryptService);
-    else if (type == "ROTATE") {
+    std::string datasetDir = encryptedDatabaseRoot;
+    datasetDir.std::string::append("/");
+    datasetDir.std::string::append(encryptedDatasetName);
+    
+    if (type == "ROTATE") {
         std::vector<std::string> files = { encryptService->encryptFilename("1.rokt") };
-        return RoktDataset(DatasetConfigType::ROTATE, datasetDir, files, encryptService);
-    } else {
-        return RoktDataset(DatasetConfigType::DATASET, datasetDir, encryptService->encryptFilename("dataset.rokt"), encryptService);
-    }
+        result = std::make_shared<RoktDataset>(DatasetConfigType::ROTATE, datasetDir, files, encryptService);
+        return ROKT::ResponseService::response(0);
+    } 
+
+    // Tous les autres cas (SIMPLE et NON EXISTANTS)
+    result = std::make_shared<RoktDataset>(DatasetConfigType::DATASET, datasetDir, encryptService->encryptFilename("dataset.rokt"), encryptService);
+    return ROKT::ResponseService::response(0);
 }

@@ -9,37 +9,61 @@
 #include "RoktService.h"
 #include "ConditionUtils.h"
 
-class ChangeCommandHandler : public CommandHandler {
+class ChangeCommandHandler : public CommandHandler
+{
 private:
-    struct ChangeParams {
+    std::string lastError;
+
+    struct ChangeParams
+    {
         std::string field;
         std::string newValue;
         std::vector<Condition> conditions;
         std::string dataset;
     };
 
-    ChangeParams parseCommand(const std::string &command) {
-        ChangeParams params;
+    bool parseCommand(const std::string &command, ChangeParams *params)
+    {
         std::istringstream iss(command);
         std::string token, keyword;
         iss >> keyword;
         if (keyword != "CHANGE")
-            throw std::runtime_error("Commande CHANGE invalide");
-        if (!(iss >> params.field))
-            throw std::runtime_error("Champ manquant");
-        params.field = trim(params.field);
+        {
+
+            this->lastError = "Commande CHANGE invalide";
+            return false;
+        }
+        if (!(iss >> params->field))
+        {
+            this->lastError = "Champ manquant";
+            return false;
+        }
+        params->field = trim(params->field);
         if (!(iss >> token) || trim(token) != "=")
-            throw std::runtime_error("Symbole '=' manquant");
-        if (!(iss >> params.newValue))
-            throw std::runtime_error("Nouvelle valeur manquante");
-        params.newValue = trim(params.newValue);
+        {
+            this->lastError = "Symbole '=' manquant";
+            return false;
+        }
+        if (!(iss >> params->newValue))
+        {
+            this->lastError = "Nouvelle valeur manquante";
+            return false;
+        }
+        params->newValue = trim(params->newValue);
         if (!(iss >> token))
-            throw std::runtime_error("Syntaxe invalide");
+        {
+            this->lastError = "Syntaxe invalide";
+            return false;
+        }
         token = trim(token);
-        if (token == "WHERE") {
+        if (token == "WHERE")
+        {
             Condition cond;
             if (!(iss >> cond.field >> cond.op >> cond.value))
-                throw std::runtime_error("Clause WHERE incomplète");
+            {
+                this->lastError = "Clause WHERE incomplète";
+                return false;
+            }
             cond.field = trim(cond.field);
             cond.op = trim(cond.op);
             cond.value = trim(cond.value);
@@ -48,16 +72,24 @@ private:
             else if (cond.op == "NOT")
                 cond.op = "!=";
             else if (cond.op != "==" && cond.op != "!=" && cond.op != "HAS")
-                throw std::runtime_error("Opérateur invalide");
+            {
+                this->lastError = "Opérateur invalide";
+                return false;
+            }
             cond.logic = "";
-            params.conditions.push_back(cond);
-            while (iss >> token) {
+            params->conditions.push_back(cond);
+            while (iss >> token)
+            {
                 token = trim(token);
-                if (token == "AND" || token == "OR") {
+                if (token == "AND" || token == "OR")
+                {
                     Condition cond2;
                     cond2.logic = token;
                     if (!(iss >> cond2.field >> cond2.op >> cond2.value))
-                        throw std::runtime_error("Clause WHERE incomplète après " + token);
+                    {
+                        this->lastError = "Clause WHERE incomplète après " + token;
+                        return false;
+                    }
                     cond2.field = trim(cond2.field);
                     cond2.op = trim(cond2.op);
                     cond2.value = trim(cond2.value);
@@ -66,47 +98,89 @@ private:
                     else if (cond2.op == "NOT")
                         cond2.op = "!=";
                     else if (cond2.op != "==" && cond2.op != "!=" && cond2.op != "HAS")
-                        throw std::runtime_error("Opérateur invalide");
-                    params.conditions.push_back(cond2);
-                } else if (trim(token) == "IN") {
+                    {
+                        this->lastError = "Opérateur invalide";
+                        return false;
+                    }
+                    params->conditions.push_back(cond2);
+                }
+                else if (trim(token) == "IN")
+                {
                     break;
-                } else {
+                }
+                else
+                {
                     break;
                 }
             }
             if (trim(token) != "IN")
-                throw std::runtime_error("IN attendu après WHERE");
-            if (!(iss >> params.dataset))
-                throw std::runtime_error("Dataset manquant");
-            params.dataset = trim(params.dataset);
-        } else if (token == "IN") {
-            if (!(iss >> params.dataset))
-                throw std::runtime_error("Dataset manquant");
-            params.dataset = trim(params.dataset);
-        } else {
-            throw std::runtime_error("Syntaxe CHANGE invalide");
+            {
+                this->lastError = "IN attendu après WHERE";
+                return false;
+            }
+            if (!(iss >> params->dataset))
+            {
+                this->lastError = "Dataset manquant";
+                return false;
+            }
+            params->dataset = trim(params->dataset);
         }
-        return params;
+        else if (token == "IN")
+        {
+            if (!(iss >> params->dataset))
+            {
+                this->lastError = "Dataset manquant";
+                return false;
+            }
+            params->dataset = trim(params->dataset);
+        }
+        else
+        {
+            {
+                this->lastError = "Syntaxe CHANGE invalide";
+                return false;
+            }
+        }
+        return true;
     }
+
 public:
     ChangeCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
-        try {
-            ChangeParams params = parseCommand(command);
-            RoktDataset datasetObj = this->service->from(params.dataset);
-            nlohmann::json data = datasetObj.select({"*"}).raw();
+    virtual std::unique_ptr<ROKT::ResponseObject>handle(const std::string &command) override
+    {
+        try
+        {
+            ChangeParams params;
+            if(!parseCommand(command, &params))
+            {
+                return CommandHandler::handle(command);
+            }
+            std::shared_ptr<RoktDataset> datasetObj;
+            if(this->service->from(params.dataset, datasetObj)->hasError()) {
+                    return ROKT::ResponseService::response(1, "Can't get dataset");
+            }
+            nlohmann::json data = datasetObj->select({"*"}).raw();
             int changedCount = 0;
-            for (auto &item : data) {
-                bool ok = params.conditions.empty() ? true : evaluateConditions(item, params.conditions);
-                if (ok) {
+            for (auto &item : data)
+            {
+                
+                bool cond;
+                if(!evaluateConditions(item, params.conditions, &cond)) {
+                    return ROKT::ResponseService::response(3, "Can't verify condition");
+                }
+                bool ok = params.conditions.empty() ? true : cond;
+                if (ok)
+                {
                     item[params.field] = params.newValue;
                     changedCount++;
                 }
             }
-            datasetObj.overwrite(data);
-            return RoktResponseService::response(0, std::string("OK, mis à jour ") + std::to_string(changedCount) + " ligne(s).");
-        } catch (std::exception &e) {
-            return RoktResponseService::response(423, std::string("Erreur CHANGE: ") + e.what());
+            datasetObj->overwrite(data);
+            return ROKT::ResponseService::response(0, std::string("OK, mis à jour ") + std::to_string(changedCount) + " ligne(s).");
+        }
+        catch (std::exception &e)
+        {
+            return ROKT::ResponseService::response(423, std::string("Erreur CHANGE: ") + e.what());
         }
     }
 };

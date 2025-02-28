@@ -1,7 +1,13 @@
 {
+    "network": {
+      "port": 8080
+    },
     "encryption": {
       "passphrase": "MaPassphraseSecretePourAES128",
       "iv": "0123456789ABCDEF"
+    },
+    "thread": {
+      "maxWorkers": 8,
+      "maxTaskQueueSize": 100
     }
 }
-  

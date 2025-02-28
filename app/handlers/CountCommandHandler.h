@@ -9,7 +9,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
+
 
 /**
  * @brief CountCommandHandler traite la commande COUNT en effectuant le comptage directement.
@@ -19,12 +19,12 @@ using json = nlohmann::json;
  *
  * Si aucune condition n'est donnée, il compte toutes les lignes du dataset.
  * Sinon, il ne compte que les lignes où la valeur du champ spécifié est égale à la valeur donnée.
- * La réponse est encapsulée dans un RoktResponseObject contenant le JSON {"count": <nombre>}.
+ * La réponse est encapsulée dans un ROKT::ResponseObject contenant le nlohmann::json {"count": <nombre>}.
  */
 class CountCommandHandler : public CommandHandler {
 public:
     CountCommandHandler(RoktService *service) : CommandHandler(service) {}
-    virtual RoktResponseObject* handle(const std::string &command) override {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) override {
         std::istringstream iss(command);
         std::string keyword, dataset, condition;
         
@@ -46,8 +46,11 @@ public:
         }
         
         // Charger le dataset via le service et lire toutes les données
-        RoktDataset datasetObj = this->service->from(dataset);
-        json data = datasetObj.select({"*"}).raw();
+        std::shared_ptr<RoktDataset> datasetObj;
+        if(this->service->from(dataset, datasetObj)->hasError()) {
+                return ROKT::ResponseService::response(1, "Can't get dataset");
+        }
+        nlohmann::json data = datasetObj->select({"*"}).raw();
         
         size_t count = 0;
         if (condition.empty()) {
@@ -57,7 +60,7 @@ public:
             // Condition attendue : "key:value"
             size_t pos = condition.find(':');
             if (pos == std::string::npos) {
-                return RoktResponseService::response(423, "Condition COUNT invalide, format attendu 'key:value'");
+                return ROKT::ResponseService::response(423, "Condition COUNT invalide, format attendu 'key:value'");
             }
             std::string key = trim(condition.substr(0, pos));
             std::string value = trim(condition.substr(pos + 1));
@@ -81,10 +84,10 @@ public:
             }
         }
         
-        // Construire la réponse au format JSON {"count": <nombre>}
-        json resp;
+        // Construire la réponse au format nlohmann::json {"count": <nombre>}
+        nlohmann::json resp;
         resp["count"] = count;
-        return RoktResponseService::response(0, "OK", resp.dump());
+        return ROKT::ResponseService::response(0, "OK", resp.dump());
     }
 };
 

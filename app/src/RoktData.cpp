@@ -18,13 +18,15 @@ static nlohmann::json getNestedValue(const nlohmann::json &j, const std::string 
     return current;
 }
 
-RoktData::RoktData(const nlohmann::json& d) : data(d) {}
+RoktData::RoktData(const nlohmann::json& d) : data(d) {
+
+}
 
 size_t RoktData::len() const {
     return data.size();
 }
 
-RoktData RoktData::where(const std::string& key, const std::string& op, const nlohmann::json& compare) {
+bool RoktData::where(const std::string& key, const std::string& op, const nlohmann::json& compare, RoktData* result) {
     nlohmann::json ret = nlohmann::json::array();
     for (auto& item : data) {
         nlohmann::json fieldValue;
@@ -42,7 +44,8 @@ RoktData RoktData::where(const std::string& key, const std::string& op, const nl
         bool condition = false;
         if (op == "HAS") {
             if (!fieldValue.is_array()) {
-                throw std::runtime_error("L'opérateur HAS ne s'applique qu'aux tableaux.");
+                this->lastError = "L'opérateur HAS ne s'applique qu'aux tableaux.";
+                return false;
             }
             for (auto& element : fieldValue) {
                 if (element == compare) {
@@ -59,7 +62,10 @@ RoktData RoktData::where(const std::string& key, const std::string& op, const nl
             else if (op == ">=") condition = a >= b;
             else if (op == "==") condition = a == b;
             else if (op == "!=") condition = a != b;
-            else throw std::runtime_error("Opérateur non reconnu");
+            else {
+                this->lastError = "Opérateur non reconnu";
+                return false;
+            }
         } else {
             if (op == "<") condition = fieldValue < compare;
             else if (op == "<=") condition = fieldValue <= compare;
@@ -67,41 +73,53 @@ RoktData RoktData::where(const std::string& key, const std::string& op, const nl
             else if (op == ">=") condition = fieldValue >= compare;
             else if (op == "==") condition = fieldValue == compare;
             else if (op == "!=") condition = fieldValue != compare;
-            else throw std::runtime_error("Opérateur non reconnu");
+            else {
+                this->lastError = "Opérateur non reconnu";
+                return false;
+            }
         }
         if (condition)
             ret.push_back(item);
     }
-    return RoktData(ret);
+    result = new RoktData(ret);
+    return true; 
 }
 
-RoktData RoktData::at(size_t index) {
-    if (index < data.size())
-        return RoktData(data[index]);
-    throw std::out_of_range("Index out of range");
+bool RoktData::at(size_t index, RoktData* result) {
+    if (index > data.size()) {
+        this->lastError = "Index out of range";
+        return false;
+    }
+    result = new RoktData(data[index]);
+    return true;
 }
 
-RoktData RoktData::head(size_t limit) {
+bool RoktData::head(size_t limit, RoktData* result) {
     nlohmann::json ret = nlohmann::json::array();
     for (size_t i = 0; i < std::min(limit, data.size()); i++)
         ret.push_back(data[i]);
-    return RoktData(ret);
+    result = new RoktData(ret);
+    return true;
 }
 
-RoktData RoktData::last() {
-    if (!data.empty())
-        return RoktData(data.back());
-    throw std::runtime_error("Data is empty");
+bool RoktData::last(RoktData* result) {
+    if (data.empty()) {
+        this->lastError = "Data is empty";
+        return false;
+    }
+    result = new RoktData(data.back());
+    return true;
 }
 
 nlohmann::json RoktData::raw() const {
     return data;
 }
 
-RoktData RoktData::get(const std::string& key) {
+bool RoktData::get(const std::string& key, RoktData* result) {
     nlohmann::json ret = nlohmann::json::array();
     for (auto& item : data)
         if (item.contains(key))
             ret.push_back(item[key]);
-    return RoktData(ret);
+    result = new RoktData(ret);
+    return true;
 }

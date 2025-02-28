@@ -14,7 +14,7 @@
 #include <stdexcept>
 #include <cstdlib>
 
-using json = nlohmann::json;
+
 
 class GetCommandHandler : public CommandHandler {
 private:
@@ -29,49 +29,66 @@ private:
         bool orderDesc;
         int limit;
     };
-    
+
+    std::string lastError;
+
     // Parse la commande GET en gérant plusieurs conditions (AND/OR)
-    GetParams parseCommand(const std::string &command) {
-        GetParams params;
-        params.orderDesc = false;
-        params.limit = -1;
+    bool parseCommand(const std::string &command, GetParams* params) {
+        params->orderDesc = false;
+        params->limit = -1;
         std::istringstream iss(command);
         std::string token;
         
         // Lecture initiale : on attend "GET <fields>"
         std::string getKeyword;
-        if (!(iss >> getKeyword))
-            throw std::runtime_error("Commande vide.");
+        if (!(iss >> getKeyword)) {
+            this->lastError = "Commande vide.";
+            return false;
+        }
         getKeyword = trim(getKeyword);
-        if (getKeyword != "GET")
-            throw std::runtime_error("La commande doit commencer par GET.");
-        if (!(iss >> params.fields))
-            throw std::runtime_error("Champ manquant après GET.");
-        params.fields = trim(params.fields);
+        if (getKeyword != "GET") {
+            this->lastError = "La commande doit commencer par GET.";
+            return false;
+        }
+        if (!(iss >> params->fields)) {
+            this->lastError = "Champ manquant après GET.";
+            return false;
+        }
+        params->fields = trim(params->fields);
         
         // Optionnel : alias avec AS
         if (iss >> token) {
             token = trim(token);
             if (token == "AS") {
-                if (!(iss >> params.alias))
-                    throw std::runtime_error("Alias manquant après AS.");
-                params.alias = trim(params.alias);
-                if (!(iss >> token))
-                    throw std::runtime_error("Mot-clé IN manquant après alias.");
+                if (!(iss >> params->alias)) {
+                    this->lastError = "Alias manquant après AS.";
+                    return false;
+                }
+                params->alias = trim(params->alias);
+                if (!(iss >> token)) {
+                    this->lastError = "Mot-clé IN manquant après alias.";
+                    return false;
+                }
                 token = trim(token);
-                if (token != "IN")
-                    throw std::runtime_error("IN manquant après alias.");
+                if (token != "IN") {
+                    this->lastError = "IN manquant après alias.";
+                    return false;
+                }
             } else if (token != "IN") {
-                throw std::runtime_error("Syntaxe invalide : attendu AS ou IN après le champ.");
+                this->lastError = "Syntaxe invalide : attendu AS ou IN après le champ.";
+                return false;
             }
         } else {
-            throw std::runtime_error("Syntaxe invalide : IN manquant.");
+            this->lastError = "Syntaxe invalide : IN manquant.";
+            return false;
         }
         
         // Lecture du dataset
-        if (!(iss >> params.dataset))
-            throw std::runtime_error("Nom du dataset manquant.");
-        params.dataset = trim(params.dataset);
+        if (!(iss >> params->dataset)) {
+            this->lastError = "Nom du dataset manquant.";
+            return false;
+        }
+        params->dataset = trim(params->dataset);
         
         // Analyse des clauses optionnelles
         // On supporte WHERE avec conditions multiples (séparées par AND ou OR),
@@ -81,8 +98,10 @@ private:
             if (token == "WHERE") {
                 // Lecture de la première condition
                 Condition cond;
-                if (!(iss >> cond.field >> cond.op >> cond.value))
-                    throw std::runtime_error("Clause WHERE incomplète.");
+                if (!(iss >> cond.field >> cond.op >> cond.value)) {
+                    this->lastError = "Clause WHERE incomplète.";
+                    return false;
+                }
                 cond.field = trim(cond.field);
                 cond.op = trim(cond.op);
                 cond.value = trim(cond.value);
@@ -90,18 +109,22 @@ private:
                     cond.op = "==";
                 else if (cond.op == "NOT")
                     cond.op = "!=";
-                else if (cond.op != "==" && cond.op != "!=" && cond.op != "HAS")
-                    throw std::runtime_error("Opérateur invalide dans WHERE.");
+                else if (cond.op != "==" && cond.op != "!=" && cond.op != "HAS") {
+                    this->lastError = "Opérateur invalide dans WHERE.";
+                    return false;
+                }
                 cond.logic = ""; // première condition, pas de logique
-                params.conditions.push_back(cond);
+                params->conditions.push_back(cond);
                 // Lecture de conditions supplémentaires, le cas échéant
                 while (iss >> token) {
                     token = trim(token);
                     if (token == "AND" || token == "OR") {
                         Condition cond2;
                         cond2.logic = token; // logique reliant à la condition précédente
-                        if (!(iss >> cond2.field >> cond2.op >> cond2.value))
-                            throw std::runtime_error("Clause WHERE incomplète après " + token);
+                        if (!(iss >> cond2.field >> cond2.op >> cond2.value)){
+                            this->lastError = "Clause WHERE incomplète après " + token;
+                            return false;
+                        }
                         cond2.field = trim(cond2.field);
                         cond2.op = trim(cond2.op);
                         cond2.value = trim(cond2.value);
@@ -109,9 +132,11 @@ private:
                             cond2.op = "==";
                         else if (cond2.op == "NOT")
                             cond2.op = "!=";
-                        else if (cond2.op != "==" && cond2.op != "!=" && cond2.op != "HAS")
-                            throw std::runtime_error("Opérateur invalide dans WHERE.");
-                        params.conditions.push_back(cond2);
+                        else if (cond2.op != "==" && cond2.op != "!=" && cond2.op != "HAS") {
+                            this->lastError = "Opérateur invalide dans WHERE.";
+                            return false;
+                        }
+                        params->conditions.push_back(cond2);
                     } else {
                         // Si le token n'est pas AND/OR, on le traite dans les clauses suivantes
                         // On sort de la boucle de conditions.
@@ -122,64 +147,81 @@ private:
                 // (On peut utiliser un putback si nécessaire, mais ici nous continuons)
             } else if (token == "GROUP") {
                 std::string by;
-                if (!(iss >> by))
-                    throw std::runtime_error("Clé manquante après GROUP.");
+                if (!(iss >> by)) {
+                    this->lastError = "Clé manquante après GROUP.";
+                    return false;
+                }
                 by = trim(by);
-                if (by != "BY")
-                    throw std::runtime_error("Syntaxe invalide pour GROUP BY.");
-                if (!(iss >> params.groupByKey))
-                    throw std::runtime_error("Clé manquante après GROUP BY.");
-                params.groupByKey = trim(params.groupByKey);
+                if (by != "BY") {
+                    this->lastError = "Syntaxe invalide pour GROUP BY.";
+                    return false;
+                }
+                if (!(iss >> params->groupByKey)) {
+                    this->lastError = "Clé manquante après GROUP BY.";
+                    return false;
+                }
+                params->groupByKey = trim(params->groupByKey);
             } else if (token == "ORDER") {
                 std::string by;
-                if (!(iss >> by))
-                    throw std::runtime_error("Clé manquante après ORDER.");
+                if (!(iss >> by)) {
+                    this->lastError = "Clé manquante après ORDER.";
+                    return false;
+                }   
                 by = trim(by);
-                if (by != "BY")
-                    throw std::runtime_error("Syntaxe invalide pour ORDER BY.");
-                if (!(iss >> params.orderByKey))
-                    throw std::runtime_error("Clé manquante après ORDER BY.");
-                params.orderByKey = trim(params.orderByKey);
+                if (by != "BY") {
+                    this->lastError = "Syntaxe invalide pour ORDER BY.";
+                    return false;
+                }
+                if (!(iss >> params->orderByKey)) {
+                    this->lastError = "Clé manquante après ORDER BY.";
+                    return false;
+                }
+                params->orderByKey = trim(params->orderByKey);
                 std::string orderOpt;
                 if (iss >> orderOpt) {
                     orderOpt = trim(orderOpt);
                     if (orderOpt == "DESC")
-                        params.orderDesc = true;
+                        params->orderDesc = true;
                     else if (orderOpt == "ASC")
-                        params.orderDesc = false;
+                        params->orderDesc = false;
                 }
             } else if (token == "LIMIT") {
                 std::string limitStr;
-                if (!(iss >> limitStr))
-                    throw std::runtime_error("Valeur manquante pour LIMIT.");
+                if (!(iss >> limitStr)) {
+                    this->lastError = "Valeur manquante pour LIMIT.";
+                    return false;
+                }
                 limitStr = trim(limitStr);
                 try {
-                    params.limit = std::stoi(limitStr);
+                    params->limit = std::stoi(limitStr);
                 } catch(...) {
-                    throw std::runtime_error("Valeur invalide pour LIMIT.");
+                    this->lastError = "Valeur invalide pour LIMIT.";
+                    return false;
                 }
             } else {
                 // Ignorer les tokens non reconnus
             }
         }
-        return params;
+        return true;
     }
     
     // Filtre le tableau selon les conditions multiples.
-    json applyConditions(const json &data, const std::vector<Condition> &conds) {
-        json filtered = json::array();
+    nlohmann::json applyConditions(const nlohmann::json &data, const std::vector<Condition> &conds) {
+        nlohmann::json filtered = nlohmann::json::array();
         for (auto &item : data) {
-            if (evaluateConditions(item, conds))
+            bool result = false;
+            evaluateConditions(item, conds, &result);
+            if (result)
                 filtered.push_back(item);
         }
         return filtered;
     }
     
     // Fonction groupBy : regroupe les objets par la clé donnée.
-    json groupBy(const json &data, const std::string &groupKey) {
-        json groups = json::object();
+    nlohmann::json groupBy(const nlohmann::json &data, const std::string &groupKey) {
+        nlohmann::json groups = nlohmann::json::object();
         for (auto &item : data) {
-            json groupValue;
+            nlohmann::json groupValue;
             if (groupKey.find('.') != std::string::npos) {
                 groupValue = getNestedValue(item, groupKey);
             } else {
@@ -190,7 +232,7 @@ private:
             }
             std::string groupStr = groupValue.dump();
             if (groups.find(groupStr) == groups.end()) {
-                groups[groupStr] = json::array();
+                groups[groupStr] = nlohmann::json::array();
             }
             groups[groupStr].push_back(item);
         }
@@ -199,11 +241,11 @@ private:
     
     // Fonction orderBy : trie le tableau selon orderKey en ignorant les éléments sans cette clé.
     // Renvoie le tableau trié et met à jour ignoredCount.
-    json orderBy(const json &data, const std::string &orderKey, bool desc, int &ignoredCount) {
-        std::vector<json> vec;
+    nlohmann::json orderBy(const nlohmann::json &data, const std::string &orderKey, bool desc, int &ignoredCount) {
+        std::vector<nlohmann::json> vec;
         ignoredCount = 0;
         for (auto &item : data) {
-            json val;
+            nlohmann::json val;
             if (orderKey.find('.') != std::string::npos) {
                 val = getNestedValue(item, orderKey);
             } else {
@@ -218,8 +260,8 @@ private:
                 vec.push_back(item);
             }
         }
-        std::sort(vec.begin(), vec.end(), [&](const json &a, const json &b) {
-            json valA, valB;
+        std::sort(vec.begin(), vec.end(), [&](const nlohmann::json &a, const nlohmann::json &b) {
+            nlohmann::json valA, valB;
             if (orderKey.find('.') != std::string::npos) {
                 valA = getNestedValue(a, orderKey);
                 valB = getNestedValue(b, orderKey);
@@ -237,11 +279,11 @@ private:
         return vec;
     }
     
-    // Fonction applyLimit : limite le nombre d'éléments d'un tableau JSON.
-    json applyLimit(const json &data, int limit) {
+    // Fonction applyLimit : limite le nombre d'éléments d'un tableau nlohmann::json.
+    nlohmann::json applyLimit(const nlohmann::json &data, int limit) {
         if (!data.is_array() || limit < 0 || static_cast<int>(data.size()) <= limit)
             return data;
-        json limited = json::array();
+        nlohmann::json limited = nlohmann::json::array();
         for (int i = 0; i < limit; i++) {
             limited.push_back(data[i]);
         }
@@ -249,10 +291,10 @@ private:
     }
     
     // Fonction applyProjection : extrait le champ spécifié de chaque objet.
-    json applyProjection(const json &data, const std::string &fields) {
+    nlohmann::json applyProjection(const nlohmann::json &data, const std::string &fields) {
         if (!data.is_array() || fields == "*")
             return data;
-        json projected = json::array();
+        nlohmann::json projected = nlohmann::json::array();
         for (auto &item : data) {
             if (item.contains(fields))
                 projected.push_back(item[fields]);
@@ -261,12 +303,12 @@ private:
     }
     
     // Fonction applyAlias : enveloppe chaque élément dans un objet avec la clé alias.
-    json applyAlias(const json &data, const std::string &alias) {
+    nlohmann::json applyAlias(const nlohmann::json &data, const std::string &alias) {
         if (!data.is_array())
             return data;
-        json aliased = json::array();
+        nlohmann::json aliased = nlohmann::json::array();
         for (auto &item : data) {
-            json obj;
+            nlohmann::json obj;
             obj[alias] = item;
             aliased.push_back(obj);
         }
@@ -275,27 +317,43 @@ private:
     
 public:
     GetCommandHandler(RoktService *service) : CommandHandler(service) {}
-    RoktResponseObject *handle(const std::string &command) override {
+    std::unique_ptr<ROKT::ResponseObject>handle(const std::string &command) override {
         if (command.find("GET") != 0)
             return CommandHandler::handle(command);
         try {
-            GetParams params = parseCommand(command);
+            GetParams params;
+            if(!parseCommand(command, &params)) {
+                return CommandHandler::handle(command);
+            }
             int ignoredCount = 0;
             // Récupérer l'objet complet du dataset
-            auto fullData = this->service->from(params.dataset).select({"*"});
+            std::shared_ptr<RoktDataset> datasetObj;
+            if(this->service->from(params.dataset, datasetObj)->hasError()) {
+                    return ROKT::ResponseService::response(1, "Can't get dataset");
+            }
+            auto fullData = datasetObj->select({"*"});
             auto data = fullData;
             // Appliquer les conditions si présentes
             if (!params.conditions.empty()) {
-                data = data.where("", "==", "dummy"); // On ignore le where() existant
+
+                if(!data.where("", "==", "dummy", &data))  // On ignore le where() existant
+                {
+                    // Ca n'a pas marche
+                    return ROKT::ResponseService::response(3, "Where failed");
+                }
                 // Nous filtrons manuellement avec evaluateConditions
-                json filtered = json::array();
+                nlohmann::json filtered = nlohmann::json::array();
                 for (auto &item : fullData.raw()) {
-                    if (evaluateConditions(item, params.conditions))
+                    bool cond;
+                    if(!evaluateConditions(item, params.conditions, &cond)) {
+                        return ROKT::ResponseService::response(3, "Can't verify condition");
+                    }
+                    if (cond)
                         filtered.push_back(item);
                 }
                 data = RoktData(filtered);
             }
-            json result = data.raw();
+            nlohmann::json result = data.raw();
             // Appliquer GROUP BY si présent
             if (!params.groupByKey.empty()) {
                 result = groupBy(result, params.groupByKey);
@@ -317,17 +375,17 @@ public:
             // Construction finale de la réponse en fonction de la logique "never nester"
             bool extraClauseUsed = (!params.conditions.empty() || !params.groupByKey.empty() ||
                                       !params.orderByKey.empty() || params.limit != -1 || !params.alias.empty());
-            json responseObj;
+            nlohmann::json responseObj;
             if (extraClauseUsed) {
-                responseObj["data"] = result;
+                responseObj["result"] = result;
                 if (ignoredCount != 0)
                     responseObj["ignored"] = ignoredCount;
             } else {
                 responseObj = result;
             }
-            return RoktResponseService::response(0, "OK", responseObj.dump(4));
+            return ROKT::ResponseService::response(0, "OK", responseObj.dump(4));
         } catch (std::exception &e) {
-            return RoktResponseService::response(1, std::string("Erreur de traitement de la commande GET: ") + e.what());
+            return ROKT::ResponseService::response(1, std::string("Erreur de traitement de la commande GET: ") + e.what());
         }
     }
 };

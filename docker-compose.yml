@@ -12,8 +12,10 @@ services:
       rokt:
     environment:
       - DEBUG=1
+      - ROKT_PORT=8080          # DEFAULT 8080
+      - ROKT_MAX_WORKERS=8      # DEFAULT 8
     ports:
-      - "8080:8080"
+      - 8080:8080
 
   php-tester:
     image: php:cli

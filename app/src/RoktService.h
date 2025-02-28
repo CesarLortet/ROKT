@@ -12,7 +12,7 @@
 class RoktService {
 private:
     std::string baseDir;
-    EncryptService* encryptService;
+    std::shared_ptr<EncryptService> encryptService;
     
     // Variables membres pour les chemins encryptés
     std::string encryptedDatabaseRoot;
@@ -25,12 +25,12 @@ private:
 public:
     static const std::string DATABASE_ROOT;  // "shared/datas" n'est plus utilisé directement
     static const std::string DATA_CONFIG_FILENAME; // "datasets.config.json" en clair
-    RoktService(const std::string& dir, EncryptService* enc);
+    RoktService(const std::string& dir, std::shared_ptr<EncryptService> enc);
     
     // Méthodes publiques
-    RoktResponseObject *create(const std::string& dataset, const std::string& type, const std::vector<std::string>& args = {});
-    RoktResponseObject *drop(const std::string& dataset);
-    RoktDataset from(const std::string& dataset, bool auto_create = false);
+    std::unique_ptr<ROKT::ResponseObject> create(const std::string& dataset, const std::string& type, const std::vector<std::string>& args = {});
+    std::unique_ptr<ROKT::ResponseObject> drop(const std::string& dataset);
+    std::unique_ptr<ROKT::ResponseObject> from(const std::string& dataset, std::shared_ptr<RoktDataset>& result);
 };
 
 #endif // ROKTSERVICE_H

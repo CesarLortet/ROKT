@@ -10,7 +10,7 @@
  * @brief Classe de base pour les handlers.
  *
  * Chaque handler doit redéfinir la méthode handle() qui prend en paramètre
- * une commande et une référence à RoktService, et renvoie un RoktResponseObject*.
+ * une commande et une référence à RoktService, et renvoie un std::unique_ptr<ROKT::ResponseObject>.
  */
 class CommandHandler {
 protected:
@@ -31,13 +31,13 @@ public:
      *
      * @param command La commande à traiter.
      * @param service Référence à RoktService.
-     * @return RoktResponseObject* Le résultat de la commande.
+     * @return std::unique_ptr<ROKT::ResponseObject> Le résultat de la commande.
      */
-    virtual RoktResponseObject* handle(const std::string &command) {
+    virtual std::unique_ptr<ROKT::ResponseObject> handle(const std::string &command) {
         if (next != nullptr) {
             return next->handle(command);
         } else {
-            return RoktResponseService::response(423, "Commande non reconnue");
+            return ROKT::ResponseService::response(423, "Commande non reconnue");
         }
     }
     virtual ~CommandHandler() {}

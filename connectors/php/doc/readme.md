@@ -218,10 +218,10 @@ class QueryBuilder {
     /**
      * Commence une requête ADD.
      *
-     * Le paramètre $jsonData doit être une chaîne JSON valide.
+     * Le paramètre $jsonData doit être une chaîne nlohmann::json valide.
      * Un champ roktID sera ajouté automatiquement par le serveur.
      *
-     * @param string $jsonData La donnée JSON à ajouter.
+     * @param string $jsonData La donnée nlohmann::json à ajouter.
      * @return QueryBuilder
      */
     public function add($jsonData) {
@@ -280,7 +280,7 @@ class QueryBuilder {
      *
      * @param string $dataset Le nom du dataset.
      * @param string $condition (optionnel) Une condition sous la forme "key:value".
-     * @return string La réponse du serveur (au format JSON).
+     * @return string La réponse du serveur (au format nlohmann::json).
      */
     public function count($dataset, $condition = "") {
         $cmd = "COUNT " . $dataset;
@@ -373,6 +373,6 @@ Imagine que ton ordinateur est un grand téléphone magique qui peut parler à u
 - **RoktClient** est comme ton téléphone magique : il sait comment composer le numéro (l'adresse et le port) et envoyer des messages.
 - **QueryBuilder** est comme un petit assistant qui t’aide à écrire des messages en langage facile, par exemple « montre-moi le nom de tous les jouets » ou « ajoute ce jouet dans le tiroir des jouets ».
 - Tu peux demander au serveur de créer des tiroirs (tables), d’y mettre des jouets (informations), de chercher des jouets par caractéristiques, de modifier les informations, ou même de compter combien de jouets il y a.
-- Toutes ces commandes sont envoyées sous forme de texte secret au serveur, et le serveur te renvoie la réponse dans une jolie boîte (un objet JSON) qui te dit ce qui a été fait.
+- Toutes ces commandes sont envoyées sous forme de texte secret au serveur, et le serveur te renvoie la réponse dans une jolie boîte (un objet nlohmann::json) qui te dit ce qui a été fait.
 
 Ce code PHP te permet de parler à ton serveur ROKT de manière simple et amusante, en utilisant des méthodes comme **select()**, **from()**, **where()**, **add()**, **update()**, **remove()**, **empty()**, **delete()**, et **count()**.
