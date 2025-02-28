@@ -18,9 +18,7 @@ static nlohmann::json getNestedValue(const nlohmann::json &j, const std::string 
     return current;
 }
 
-RoktData::RoktData(const nlohmann::json& d) : data(d) {
-
-}
+RoktData::RoktData(const nlohmann::json& d) : data(d) { }
 
 size_t RoktData::len() const {
     return data.size();
