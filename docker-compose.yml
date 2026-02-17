@@ -28,5 +28,7 @@ services:
       - ./tests/tester.php:/tester.php   # Montage du script tester.php
     command: ["php", "/tester.php"]
 
+volumes:
+  rokt_datas:
 networks: 
   rokt:
