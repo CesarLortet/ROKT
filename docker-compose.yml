@@ -7,7 +7,7 @@ services:
     container_name: rokt_container
     hostname: rokt_host
     volumes:
-      - ./shared:/app/shared
+      - rokt_datas:/app/shared
     networks: 
       rokt:
     environment:
