@@ -6,7 +6,7 @@
  * @return string La réponse reçue depuis le serveur.
  */
 function sendCommand($command) {
-    $host = '127.0.0.1'; // correspond au hostname défini dans docker-compose
+    $host = 'rokt_host'; // correspond au hostname défini dans docker-compose
     $port = 8080;        // port sur lequel le serveur C++ écoute
 
     // Ouverture de la connexion socket
